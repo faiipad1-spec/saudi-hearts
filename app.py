@@ -1,6 +1,11 @@
 
+import json
+import math
+import urllib.request
+
 import streamlit as st
 import streamlit.components.v1 as components
+
 
 st.set_page_config(
     page_title="السعودية خط أحمر",
@@ -9,12 +14,139 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-HTML = r"""
+
+# تحميل الحدود الجغرافية للمملكة وتحويلها إلى مسار SVG.
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_saudi_map():
+    url = (
+        "https://raw.githubusercontent.com/"
+        "datasets/geo-countries/master/data/countries.geojson"
+    )
+
+    request = urllib.request.Request(
+        url,
+        headers={"User-Agent": "SaudiHeartsApp/1.0"},
+    )
+
+    with urllib.request.urlopen(request, timeout=30) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    feature = None
+
+    for item in data["features"]:
+        props = item.get("properties", {})
+        values = [
+            str(v).strip().lower()
+            for v in props.values()
+            if isinstance(v, str)
+        ]
+
+        if (
+            "saudi arabia" in values
+            or props.get("ISO3166-1-Alpha-3") == "SAU"
+            or props.get("ADM0_A3") == "SAU"
+        ):
+            feature = item
+            break
+
+    if feature is None:
+        raise ValueError("Saudi Arabia was not found in the GeoJSON data.")
+
+    geometry = feature["geometry"]
+
+    if geometry["type"] == "Polygon":
+        polygons = [geometry["coordinates"]]
+    elif geometry["type"] == "MultiPolygon":
+        polygons = geometry["coordinates"]
+    else:
+        raise ValueError("Unsupported map geometry.")
+
+    all_points = [
+        point
+        for polygon in polygons
+        for ring in polygon
+        for point in ring
+    ]
+
+    if not all_points:
+        raise ValueError("Map coordinates are empty.")
+
+    mean_lat = sum(p[1] for p in all_points) / len(all_points)
+    lon_factor = math.cos(math.radians(mean_lat))
+
+    projected = [
+        (lon * lon_factor, lat)
+        for lon, lat in all_points
+    ]
+
+    min_x = min(p[0] for p in projected)
+    max_x = max(p[0] for p in projected)
+    min_y = min(p[1] for p in projected)
+    max_y = max(p[1] for p in projected)
+
+    width = 600
+    height = 700
+    padding = 24
+
+    scale = min(
+        (width - 2 * padding) / (max_x - min_x),
+        (height - 2 * padding) / (max_y - min_y),
+    )
+
+    drawn_width = (max_x - min_x) * scale
+    drawn_height = (max_y - min_y) * scale
+
+    offset_x = (width - drawn_width) / 2
+    offset_y = (height - drawn_height) / 2
+
+    def project(lon, lat):
+        x = lon * lon_factor
+        return (
+            offset_x + (x - min_x) * scale,
+            offset_y + (max_y - lat) * scale,
+        )
+
+    paths = []
+
+    for polygon in polygons:
+        rings = []
+
+        for ring in polygon:
+            if len(ring) < 3:
+                continue
+
+            points = [project(lon, lat) for lon, lat in ring]
+
+            rings.append(
+                "M "
+                + " L ".join(
+                    f"{x:.2f},{y:.2f}" for x, y in points
+                )
+                + " Z"
+            )
+
+        paths.extend(rings)
+
+    return " ".join(paths)
+
+
+try:
+    map_path = get_saudi_map()
+except Exception:
+    st.error(
+        "تعذر تحميل الخريطة الجغرافية. "
+        "تحققي من اتصال الإنترنت ثم أعيدي تحميل التطبيق."
+    )
+    st.stop()
+
+
+html = r"""
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
 <style>
 * {
@@ -36,60 +168,58 @@ body {
 
 .app {
     width: 100%;
-    min-height: 95vh;
+    min-height: 720px;
     background: #ffffff;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 20px 8px 28px;
+    padding: 15px 4px 28px;
 }
 
 .scene {
-    position: relative;
-    width: min(100%, 850px);
-    height: clamp(350px, 70vh, 590px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.hearts {
-    position: absolute;
-    z-index: 1;
-    top: 50%;
-    left: 0;
-    width: 100%;
-    transform: translateY(-50%);
+    width: min(100%, 900px);
+    min-height: 570px;
     display: grid;
-    grid-template-columns: repeat(14, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 2fr) minmax(0, 1fr);
     align-items: center;
     justify-items: center;
     direction: ltr;
+    gap: 5px;
+}
+
+.hearts {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: center;
+    justify-items: center;
+    align-items: center;
+    gap: 28px 4px;
+    direction: ltr;
+    z-index: 3;
 }
 
 .heart {
     appearance: none;
     -webkit-appearance: none;
-    border: none;
+    border: 0;
     background: transparent;
-    color: #e31b32;
-    font-size: clamp(15px, 3.2vw, 29px);
+    color: #e31837;
+    font-family: Arial, sans-serif;
+    font-size: clamp(22px, 3.5vw, 34px);
     line-height: 1;
-    padding: 5px 0;
+    padding: 6px 2px;
     margin: 0;
     cursor: pointer;
-    transition:
-        transform .22s ease,
-        color .22s ease,
-        filter .22s ease;
+    transition: transform .22s ease, color .22s ease;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 .heart.active {
-    color: #e31b32;
-    transform: scale(1.16);
-    filter: drop-shadow(0 1px 3px #e31b3233);
+    color: #e31837;
+    transform: scale(1.18);
 }
 
 .heart:active {
@@ -99,47 +229,44 @@ body {
 .heart:focus-visible {
     outline: 2px solid #204d2d;
     outline-offset: 3px;
-    border-radius: 5px;
 }
 
 .map-wrap {
-    position: relative;
-    z-index: 2;
-    width: min(66%, 420px);
-    max-height: 90%;
+    width: 100%;
+    height: 520px;
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    z-index: 2;
     pointer-events: none;
 }
 
 .map {
     display: block;
     width: 100%;
-    max-height: 490px;
-    height: auto;
+    height: 100%;
     overflow: visible;
     filter:
-        drop-shadow(0 5px 2px #00000024)
-        drop-shadow(0 12px 15px #00000012);
+        drop-shadow(0 3px 2px #00000018)
+        drop-shadow(0 10px 13px #00000010);
 }
 
 .map-shape {
     fill: #ffffff;
-    stroke: #d8ded9;
-    stroke-width: 1.8;
+    stroke: #cfd8d1;
+    stroke-width: 2.2;
     stroke-linejoin: round;
+    stroke-linecap: round;
+    fill-rule: evenodd;
 }
 
 .caption {
-    position: relative;
-    z-index: 3;
-    margin-top: -2px;
+    margin-top: 0;
     text-align: center;
-    color: #e31b32;
-    font-size: clamp(27px, 6vw, 47px);
+    color: #e31837;
+    font-size: clamp(28px, 5.5vw, 47px);
     font-weight: 900;
-    letter-spacing: 0;
     line-height: 1.5;
     opacity: 0;
     transform: translateY(8px);
@@ -152,36 +279,37 @@ body {
 }
 
 .counter {
+    margin-top: 12px;
     color: #204d2d;
     font-size: 14px;
-    margin-top: 12px;
-    font-weight: 700;
+    font-weight: bold;
     direction: rtl;
 }
 
 @media (max-width: 480px) {
     .app {
         min-height: 90vh;
-        padding: 10px 3px 24px;
+        padding: 12px 3px 22px;
     }
 
     .scene {
-        height: 54vh;
-        min-height: 330px;
-        max-height: 470px;
-    }
-
-    .map-wrap {
-        width: 69%;
+        min-height: 440px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1fr);
+        gap: 2px;
     }
 
     .hearts {
-        grid-template-columns: repeat(14, minmax(0, 1fr));
+        grid-template-columns: 1fr;
+        gap: 24px;
     }
 
     .heart {
-        font-size: clamp(13px, 4.2vw, 19px);
-        padding: 8px 0;
+        font-size: clamp(22px, 6vw, 28px);
+        padding: 7px 0;
+    }
+
+    .map-wrap {
+        height: 410px;
     }
 
     .caption {
@@ -189,10 +317,19 @@ body {
     }
 }
 
+@media (max-width: 350px) {
+    .scene {
+        grid-template-columns: minmax(0, .85fr) minmax(0, 1.8fr) minmax(0, .85fr);
+    }
+
+    .heart {
+        font-size: 20px;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
-        transition-duration: 0.01ms !important;
-        animation-duration: 0.01ms !important;
+        transition-duration: .01ms !important;
     }
 }
 </style>
@@ -201,106 +338,27 @@ body {
 <body>
 <main class="app">
 
-    <section class="scene" aria-label="خريطة المملكة والقلوب التفاعلية">
+    <section class="scene"
+             aria-label="خريطة المملكة والقلوب التفاعلية">
 
-        <div class="hearts" id="hearts" aria-label="أربعة عشر قلبًا"></div>
+        <!-- سبعة قلوب على اليسار -->
+        <div class="hearts" id="hearts-left"></div>
 
+        <!-- الخريطة في المنتصف -->
         <div class="map-wrap">
-            <!-- SVG outline of Saudi Arabia from Wikimedia Commons -->
-            <svg
-                class="map"
-                viewBox="0 0 512 512"
-                role="img"
-                aria-label="خريطة المملكة العربية السعودية"
-                xmlns="http://www.w3.org/2000/svg">
-
-                <defs>
-                    <filter id="emboss" x="-15%" y="-15%" width="130%" height="130%">
-                        <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur"/>
-                        <feOffset in="blur" dx="0" dy="3" result="offset"/>
-                        <feComposite in="SourceGraphic" in2="offset"
-                                     operator="over"/>
-                    </filter>
-                </defs>
-
-                <image
-                    href="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Saudi_Arabia_location_map.svg/512px-Saudi_Arabia_location_map.svg.png"
-                    x="0" y="0" width="512" height="512"
-                    preserveAspectRatio="xMidYMid meet"
-                    opacity="0"
-                />
-
-                <!-- Geographic outline of Saudi Arabia -->
-                <path class="map-shape" filter="url(#emboss)"
-                    d="
-                    M 124,85
-                    L 159,70
-                    L 189,74
-                    L 216,90
-                    L 241,101
-                    L 267,105
-                    L 286,119
-                    L 307,124
-                    L 328,140
-                    L 352,145
-                    L 371,159
-                    L 386,178
-                    L 407,187
-                    L 419,203
-                    L 412,220
-                    L 423,239
-                    L 414,255
-                    L 424,273
-                    L 412,290
-                    L 405,310
-                    L 387,326
-                    L 370,342
-                    L 357,360
-                    L 339,375
-                    L 325,393
-                    L 307,401
-                    L 296,421
-                    L 280,433
-                    L 266,424
-                    L 256,406
-                    L 238,394
-                    L 219,381
-                    L 207,363
-                    L 190,354
-                    L 174,338
-                    L 157,324
-                    L 143,303
-                    L 130,283
-                    L 116,262
-                    L 106,244
-                    L 93,224
-                    L 99,207
-                    L 91,191
-                    L 103,175
-                    L 101,157
-                    L 113,142
-                    L 111,123
-                    L 124,108
-                    Z
-                "
-                />
-
-                <!-- Reference outline loaded from a geographic SVG -->
-                <path d="
-                    M 124,85 L 159,70 L 189,74 L 216,90 L 241,101
-                    L 267,105 L 286,119 L 307,124 L 328,140 L 352,145
-                    L 371,159 L 386,178 L 407,187 L 419,203 L 412,220
-                    L 423,239 L 414,255 L 424,273 L 412,290 L 405,310
-                    L 387,326 L 370,342 L 357,360 L 339,375 L 325,393
-                    L 307,401 L 296,421 L 280,433 L 266,424 L 256,406
-                    L 238,394 L 219,381 L 207,363 L 190,354 L 174,338
-                    L 157,324 L 143,303 L 130,283 L 116,262 L 106,244
-                    L 93,224 L 99,207 L 91,191 L 103,175 L 101,157
-                    L 113,142 L 111,123 L 124,108 Z
-                " fill="none" stroke="#cbd5ce" stroke-width="1.5"
-                   stroke-linejoin="round" />
+            <svg class="map"
+                 viewBox="0 0 600 700"
+                 role="img"
+                 aria-label="خريطة المملكة العربية السعودية"
+                 xmlns="http://www.w3.org/2000/svg">
+                <path class="map-shape"
+                      d="__SAUDI_MAP_PATH__"/>
             </svg>
         </div>
+
+        <!-- سبعة قلوب على اليمين -->
+        <div class="hearts" id="hearts-right"></div>
+
     </section>
 
     <div class="caption" id="caption" aria-live="polite">
@@ -315,37 +373,57 @@ body {
 
 <script>
 (function () {
-    const container = document.getElementById("hearts");
-    const counter = document.getElementById("counter");
+    const left = document.getElementById("hearts-left");
+    const right = document.getElementById("hearts-right");
     const caption = document.getElementById("caption");
+    const counter = document.getElementById("counter");
+
     const total = 14;
     const active = Array(total).fill(false);
 
     function render() {
-        container.innerHTML = "";
+        left.innerHTML = "";
+        right.innerHTML = "";
 
         for (let i = 0; i < total; i++) {
             const button = document.createElement("button");
+
             button.type = "button";
-            button.className = "heart" + (active[i] ? " active" : "");
+            button.className =
+                "heart" + (active[i] ? " active" : "");
+
             button.textContent = active[i] ? "\u2665" : "\u2661";
+
             button.setAttribute(
                 "aria-label",
-                "القلب " + (i + 1) + (active[i] ? " مضاء" : " فارغ")
+                "القلب " + (i + 1)
             );
-            button.setAttribute("aria-pressed", String(active[i]));
+
+            button.setAttribute(
+                "aria-pressed",
+                String(active[i])
+            );
 
             button.addEventListener("click", function () {
                 active[i] = !active[i];
                 render();
             });
 
-            container.appendChild(button);
+            if (i < 7) {
+                left.appendChild(button);
+            } else {
+                right.appendChild(button);
+            }
         }
 
         const count = active.filter(Boolean).length;
+
         counter.textContent = count + " / " + total;
-        caption.classList.toggle("visible", count === total);
+
+        caption.classList.toggle(
+            "visible",
+            count === total
+        );
     }
 
     render();
@@ -356,18 +434,24 @@ body {
 </html>
 """
 
+html = html.replace("__SAUDI_MAP_PATH__", map_path)
+
 st.markdown(
     """
     <style>
-    #MainMenu, footer, header,
+    #MainMenu,
+    footer,
+    header,
     [data-testid="stHeader"],
     [data-testid="stToolbar"],
     [data-testid="stDecoration"] {
         display: none !important;
     }
 
-    .stApp, [data-testid="stAppViewContainer"],
-    [data-testid="stMain"], [data-testid="stMainBlockContainer"] {
+    .stApp,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stMain"],
+    [data-testid="stMainBlockContainer"] {
         background: #ffffff !important;
     }
 
@@ -384,4 +468,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-components.html(HTML, height=750, scrolling=False)
+components.html(
+    html,
+    height=760,
+    scrolling=False,
+)
