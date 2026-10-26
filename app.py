@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 
-# تحميل الحدود الجغرافية للمملكة وتحويلها إلى مسار SVG.
+# تحميل الحدود الجغرافية للمملكة وتحويلها إلى مسار SVG
 @st.cache_data(ttl=86400, show_spinner=False)
 def get_saudi_map():
     url = (
@@ -36,9 +36,9 @@ def get_saudi_map():
     for item in data["features"]:
         props = item.get("properties", {})
         values = [
-            str(v).strip().lower()
-            for v in props.values()
-            if isinstance(v, str)
+            str(value).strip().lower()
+            for value in props.values()
+            if isinstance(value, str)
         ]
 
         if (
@@ -71,7 +71,7 @@ def get_saudi_map():
     if not all_points:
         raise ValueError("Map coordinates are empty.")
 
-    mean_lat = sum(p[1] for p in all_points) / len(all_points)
+    mean_lat = sum(point[1] for point in all_points) / len(all_points)
     lon_factor = math.cos(math.radians(mean_lat))
 
     projected = [
@@ -79,10 +79,10 @@ def get_saudi_map():
         for lon, lat in all_points
     ]
 
-    min_x = min(p[0] for p in projected)
-    max_x = max(p[0] for p in projected)
-    min_y = min(p[1] for p in projected)
-    max_y = max(p[1] for p in projected)
+    min_x = min(point[0] for point in projected)
+    max_x = max(point[0] for point in projected)
+    min_y = min(point[1] for point in projected)
+    max_y = max(point[1] for point in projected)
 
     width = 600
     height = 700
@@ -109,23 +109,25 @@ def get_saudi_map():
     paths = []
 
     for polygon in polygons:
-        rings = []
-
         for ring in polygon:
             if len(ring) < 3:
                 continue
 
-            points = [project(lon, lat) for lon, lat in ring]
+            points = [
+                project(lon, lat)
+                for lon, lat in ring
+            ]
 
-            rings.append(
+            path = (
                 "M "
                 + " L ".join(
-                    f"{x:.2f},{y:.2f}" for x, y in points
+                    f"{x:.2f},{y:.2f}"
+                    for x, y in points
                 )
                 + " Z"
             )
 
-        paths.extend(rings)
+            paths.append(path)
 
     return " ".join(paths)
 
@@ -134,7 +136,7 @@ try:
     map_path = get_saudi_map()
 except Exception:
     st.error(
-        "تعذر تحميل الخريطة الجغرافية. "
+        "تعذر تحميل خريطة السعودية. "
         "تحققي من اتصال الإنترنت ثم أعيدي تحميل التطبيق."
     )
     st.stop()
@@ -174,52 +176,58 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 15px 4px 28px;
+    padding: 18px 4px 28px;
 }
 
 .scene {
-    width: min(100%, 900px);
+    width: min(100%, 1100px);
     min-height: 570px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(180px, 2fr) minmax(0, 1fr);
+    grid-template-columns:
+        minmax(0, 1fr)
+        minmax(180px, 2fr)
+        minmax(0, 1fr);
     align-items: center;
     justify-items: center;
     direction: ltr;
-    gap: 5px;
+    gap: 12px;
 }
 
 .hearts {
     width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-content: center;
-    justify-items: center;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
     align-items: center;
-    gap: 28px 4px;
+    gap: 3px;
     direction: ltr;
-    z-index: 3;
 }
 
 .heart {
     appearance: none;
     -webkit-appearance: none;
-    border: 0;
+    border: none;
+    outline-offset: 3px;
     background: transparent;
     color: #e31837;
     font-family: Arial, sans-serif;
-    font-size: clamp(22px, 3.5vw, 34px);
+    font-size: clamp(16px, 2.5vw, 30px);
     line-height: 1;
-    padding: 6px 2px;
+    padding: 5px 0;
     margin: 0;
+    flex: 1;
+    min-width: 0;
     cursor: pointer;
-    transition: transform .22s ease, color .22s ease;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    transition:
+        transform .22s ease,
+        color .22s ease;
 }
 
 .heart.active {
     color: #e31837;
-    transform: scale(1.18);
+    transform: scale(1.15);
 }
 
 .heart:active {
@@ -227,8 +235,8 @@ body {
 }
 
 .heart:focus-visible {
-    outline: 2px solid #204d2d;
-    outline-offset: 3px;
+    outline: 2px solid #14532d;
+    border-radius: 5px;
 }
 
 .map-wrap {
@@ -253,8 +261,8 @@ body {
 }
 
 .map-shape {
-    fill: #ffffff;
-    stroke: #cfd8d1;
+    fill: #14532d;
+    stroke: #0b3d20;
     stroke-width: 2.2;
     stroke-linejoin: round;
     stroke-linecap: round;
@@ -270,7 +278,9 @@ body {
     line-height: 1.5;
     opacity: 0;
     transform: translateY(8px);
-    transition: opacity .45s ease, transform .45s ease;
+    transition:
+        opacity .45s ease,
+        transform .45s ease;
 }
 
 .caption.visible {
@@ -280,13 +290,13 @@ body {
 
 .counter {
     margin-top: 12px;
-    color: #204d2d;
+    color: #14532d;
     font-size: 14px;
     font-weight: bold;
     direction: rtl;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
     .app {
         min-height: 90vh;
         padding: 12px 3px 22px;
@@ -294,18 +304,20 @@ body {
 
     .scene {
         min-height: 440px;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr) minmax(0, 1fr);
-        gap: 2px;
+        grid-template-columns:
+            minmax(0, 1fr)
+            minmax(0, 1.8fr)
+            minmax(0, 1fr);
+        gap: 3px;
     }
 
     .hearts {
-        grid-template-columns: 1fr;
-        gap: 24px;
+        gap: 1px;
     }
 
     .heart {
-        font-size: clamp(22px, 6vw, 28px);
-        padding: 7px 0;
+        font-size: clamp(13px, 3.2vw, 20px);
+        padding: 6px 0;
     }
 
     .map-wrap {
@@ -313,17 +325,25 @@ body {
     }
 
     .caption {
-        font-size: clamp(27px, 8vw, 38px);
+        font-size: clamp(27px, 7vw, 38px);
     }
 }
 
-@media (max-width: 350px) {
+@media (max-width: 360px) {
     .scene {
-        grid-template-columns: minmax(0, .85fr) minmax(0, 1.8fr) minmax(0, .85fr);
+        grid-template-columns:
+            minmax(0, 1fr)
+            minmax(0, 1.65fr)
+            minmax(0, 1fr);
+        gap: 1px;
     }
 
     .heart {
-        font-size: 20px;
+        font-size: 12px;
+    }
+
+    .map-wrap {
+        height: 360px;
     }
 }
 
@@ -341,10 +361,10 @@ body {
     <section class="scene"
              aria-label="خريطة المملكة والقلوب التفاعلية">
 
-        <!-- سبعة قلوب على اليسار -->
+        <!-- سبعة قلوب في صف أفقي على اليسار -->
         <div class="hearts" id="hearts-left"></div>
 
-        <!-- الخريطة في المنتصف -->
+        <!-- خريطة السعودية في المنتصف -->
         <div class="map-wrap">
             <svg class="map"
                  viewBox="0 0 600 700"
@@ -356,7 +376,7 @@ body {
             </svg>
         </div>
 
-        <!-- سبعة قلوب على اليمين -->
+        <!-- سبعة قلوب في صف أفقي على اليمين -->
         <div class="hearts" id="hearts-right"></div>
 
     </section>
